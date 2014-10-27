@@ -61,6 +61,7 @@ import com.netflix.astyanax.connectionpool.NodeDiscoveryType;
 import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 import com.netflix.astyanax.connectionpool.impl.ConnectionPoolConfigurationImpl;
 import com.netflix.astyanax.connectionpool.impl.CountingConnectionPoolMonitor;
+import com.netflix.astyanax.connectionpool.impl.ConnectionPoolType;
 import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
 import com.netflix.astyanax.model.ColumnFamily;
 import com.netflix.astyanax.model.Composite;
@@ -69,6 +70,8 @@ import com.netflix.astyanax.query.RowSliceQuery;
 import com.netflix.astyanax.serializers.CompositeSerializer;
 import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
+
+import backtype.storm.metric.api.MultiCountMetric;
 
 public class CassandraMapState<T> implements IBackingMap<T> {
     @SuppressWarnings("unused")
@@ -81,13 +84,18 @@ public class CassandraMapState<T> implements IBackingMap<T> {
     public static final String ASTYANAX_CONFIGURATION = "astyanax.configuration";
     public static final String ASTYANAX_CONNECTION_POOL_CONFIGURATION = "astyanax.connectionPoolConfiguration";
     public static final String ASTYANAX_CONNECTION_POOL_MONITOR = "astyanax.connectioPoolMonitor";
+  // metrics
+  transient MultiCountMetric multiGetMetrics;
+  transient MultiCountMetric multiPutMetrics;
 
     private final Map<String, Object> DEFAULTS = new ImmutableMap.Builder<String, Object>()
             .put(CASSANDRA_CLUSTER_NAME, "ClusterName")
             .put(ASTYANAX_CONFIGURATION,
-                    new AstyanaxConfigurationImpl().setDiscoveryType(NodeDiscoveryType.RING_DESCRIBE))
+                    new AstyanaxConfigurationImpl()
+                 .setDiscoveryType(NodeDiscoveryType.RING_DESCRIBE)
+                 .setConnectionPoolType(ConnectionPoolType.TOKEN_AWARE))
             .put(ASTYANAX_CONNECTION_POOL_CONFIGURATION,
-                    new ConnectionPoolConfigurationImpl("MyConnectionPool").setMaxConnsPerHost(1))
+                    new ConnectionPoolConfigurationImpl("MyConnectionPool").setMaxConnsPerHost(4))
             .put(ASTYANAX_CONNECTION_POOL_MONITOR, new CountingConnectionPoolMonitor()).build();
 
     private Options<T> options;
@@ -192,7 +200,7 @@ public class CassandraMapState<T> implements IBackingMap<T> {
 
         @SuppressWarnings({ "rawtypes", "unchecked" })
         public State makeState(Map conf, IMetricsContext metrics, int partitionIndex, int numPartitions) {
-            CassandraMapState state = new CassandraMapState(options, conf);
+          CassandraMapState state = new CassandraMapState(options, conf, metrics);
 
             CachedMap cachedMap = new CachedMap(state, options.localCacheSize);
 
@@ -213,16 +221,22 @@ public class CassandraMapState<T> implements IBackingMap<T> {
     }
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
-    public CassandraMapState(Options<T> options, Map conf) {
+    public CassandraMapState(Options<T> options, Map conf, IMetricsContext metrics) {
         this.options = options;
         this.serializer = options.serializer;
         AstyanaxContext<Keyspace> context = createContext((Map<String, Object>) conf.get(options.clientConfigKey));
         context.start();
         this.keyspace = context.getEntity();
+        // metrics
+        this.multiGetMetrics = new MultiCountMetric();
+        this.multiPutMetrics = new MultiCountMetric();
+        metrics.registerMetric("cassandra_multi_get", this.multiGetMetrics, 30);
+        metrics.registerMetric("cassandra_multi_put", this.multiPutMetrics, 30);
     }
 
     @Override
     public List<T> multiGet(List<List<Object>> keys) {
+      long startTime = System.nanoTime();
         Collection<Composite> keyNames = toKeyNames(keys);
         ColumnFamily<Composite, String> cf = new ColumnFamily<Composite, String>(this.options.columnFamily,
                 CompositeSerializer.get(), StringSerializer.get());
@@ -258,12 +272,16 @@ public class CassandraMapState<T> implements IBackingMap<T> {
                 values.add(null);
             }
         }
-
+        long endTime = System.nanoTime();
+        long duration = (endTime - startTime) / 1000000; // nanoseconds -> milliseconds
+        this.multiGetMetrics.scope("count").incr();
+        this.multiGetMetrics.scope("latency").incrBy(duration);
         return values;
     }
 
     @Override
     public void multiPut(List<List<Object>> keys, List<T> values) {
+      long startTime = System.nanoTime();
         MutationBatch mutation = this.keyspace.prepareMutationBatch();
         ColumnFamily<Composite, String> cf = new ColumnFamily<Composite, String>(this.options.columnFamily,
                 CompositeSerializer.get(), StringSerializer.get());
@@ -282,6 +300,10 @@ public class CassandraMapState<T> implements IBackingMap<T> {
         } catch (ConnectionException e) {
             throw new RuntimeException("Batch mutation for state failed.", e);
         }
+        long endTime = System.nanoTime();
+        long duration = (endTime - startTime) / 1000000; // nanoseconds -> milliseconds
+        this.multiPutMetrics.scope("count").incr();
+        this.multiPutMetrics.scope("latency").incrBy(duration);
     }
 
     private Collection<Composite> toKeyNames(List<List<Object>> keys) {
