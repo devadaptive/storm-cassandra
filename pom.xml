@@ -24,7 +24,7 @@
 	</parent>
 
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>com.hmsonline</groupId>
+	<groupId>yieldbot</groupId>
 	<artifactId>storm-cassandra</artifactId>
 	<version>0.4.0-rc5</version>
 	<name>Storm Cassandra Support</name>
