@@ -135,8 +135,8 @@ public class AstyanaxClient<K, C, V> {
             if(port != null){
             	cpConfig.setPort(port.intValue());
             }
-            
-            // 
+
+            //
             String user = (String) config.get(StormCassandraConstants.CASSANDRA_USERNAME);
 
             if( user != null && ! user.trim().isEmpty() ){
@@ -374,7 +374,7 @@ public class AstyanaxClient<K, C, V> {
         this.addTupleToMutation(input, columnFamily, rowKey, mutation, tupleMapper);
         mutation.execute();
     }
-    
+
     @SuppressWarnings({ "static-access", "unchecked" })
     public void writeTuples(List<TridentTuple> inputs, TridentTupleMapper<K, C, V> tupleMapper) throws Exception {
         Map<String, MutationBatch> mutations = new HashMap<String, MutationBatch>();
@@ -385,7 +385,7 @@ public class AstyanaxClient<K, C, V> {
                 mutation = getKeyspace(keyspace).prepareMutationBatch();
                 mutations.put(keyspace, mutation);
             }
-            
+
             String columnFamilyName = tupleMapper.mapToColumnFamily(input);
             K rowKey = tupleMapper.mapToRowKey(input);
             ColumnFamily<K, C> columnFamily = new ColumnFamily<K, C>(columnFamilyName,
@@ -408,7 +408,7 @@ public class AstyanaxClient<K, C, V> {
                 mutation = getKeyspace(keyspace).prepareMutationBatch();
                 mutations.put(keyspace, mutation);
             }
-            
+
             String columnFamilyName = tupleMapper.mapToColumnFamily(input);
             K rowKey = tupleMapper.mapToRowKey(input);
             ColumnFamily<K, C> columnFamily = new ColumnFamily<K, C>(columnFamilyName,
@@ -467,10 +467,10 @@ public class AstyanaxClient<K, C, V> {
     }
 
     @SuppressWarnings("unchecked")
-	public void incrementCountColumns(List<Tuple> inputs, TupleCounterMapper<K,C> tupleMapper) throws Exception {    
+	public void incrementCountColumns(List<Tuple> inputs, TupleCounterMapper<K,C> tupleMapper) throws Exception {
         Map<String, MutationBatch> mutations = new HashMap<String, MutationBatch>();
         for (Tuple input : inputs) {
-            String keyspace = tupleMapper.mapToKeyspace(input);            
+            String keyspace = tupleMapper.mapToKeyspace(input);
             MutationBatch mutation = mutations.get(keyspace);
             if(mutation == null) {
                 mutation = getKeyspace(keyspace).prepareMutationBatch();
@@ -628,11 +628,11 @@ public class AstyanaxClient<K, C, V> {
         }
         return serializer;
     }
-    
+
     public Keyspace getKeyspace() {
         return this.getAstyanaxContext().getEntity();
     }
-    
+
     public Keyspace getKeyspace(String keyspace) {
         return this.getAstyanaxContext(keyspace).getEntity();
     }
