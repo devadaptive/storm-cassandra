@@ -267,7 +267,12 @@ public class CassandraMapState<T> implements IBackingMap<T> {
             List<String> stringKey = toKeyStrings(key);
             byte[] bytes = resultMap.get(stringKey);
             if (bytes != null) {
-                values.add(serializer.deserialize(bytes));
+                try {
+                  values.add(serializer.deserialize(bytes));
+                } catch (Exception e) {
+                  LOG.error("unable to deserialize value for " + stringKey + ": " + e);
+                  values.add(null);
+                }
             } else {
                 values.add(null);
             }
